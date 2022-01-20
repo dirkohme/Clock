@@ -1,17 +1,40 @@
 ###########################################
-# Syntax Coloring Map For CClock
+# Syntax Coloring Map For Clock
 ###########################################
 
 ###########################################
 # Datatypes (KEYWORD1)
 ###########################################
-CClock ESP8266 KEYWORD1
+Clock			KEYWORD1
+EEvent			KEYWORD1
 
 ###########################################
 # Methods and Functions (KEYWORD2)
 ###########################################
-clock KEYWORD2
+Clock			KEYWORD2
+CheckEvent		KEYWORD2
+Day			KEYWORD2
+EnableAlarm		KEYWORD2
+GetAlarmTime		KEYWORD2
+GetDateStr		KEYWORD2
+Hour			KEYWORD2
+Init			KEYWORD2
+IsAlarm			KEYWORD2
+IsAlarmEnabled		KEYWORD2
+IsAlarmValid		KEYWORD2
+IsDay			KEYWORD2
+Loop			KEYWORD2
+Minute			KEYWORD2
+Month			KEYWORD2
+SaveClock		KEYWORD2
+SetAlarm		KEYWORD2
+SetAlarmRelative	KEYWORD2
+SetClock		KEYWORD2
+Snooze			KEYWORD2
+Year			KEYWORD2
 
 ###########################################
 # Constants (LITERAL1)
 ###########################################
+Months			LITERAL1
+SnoozeMinutes		LITERAL1

@@ -1,6 +1,6 @@
 //==============================================================================
-// Beep - example for beep
-// (c) 2019-2020 by Dirk Ohme
+// Clock - sample for Arduino Clock class
+// (c) 2019-2022 by Dirk Ohme
 //==============================================================================
 
 //---| definitions |------------------------------------------------------------
@@ -26,13 +26,12 @@ void setup()
 	
 	// start serial communication
 	Serial.begin(9600);
+	delay(50);
 	Serial.println("");
 	
 	// initialize clock
-	boResult = Clock.Init();
-	Serial.println((boResult == false)  ? "Cannot initialize clock!" :
-	               (Clock.HasHWClock()) ? "Clock uses hardware RTC" :
-		                              "Clock uses software emulation");
+	boResult = MyClock.Init();
+	Serial.printf("Initialize clock: %s\n", (boResult) ? "ok" : "FAILED");
 }
 
 //------------------------------------------------------------------------------
@@ -40,27 +39,29 @@ void setup()
 //------------------------------------------------------------------------------
 void loop()
 {
-	CClock::EEvent eEvent;
+	Clock::EEvent eEvent;
 	
 	// check clock event
-	eEvent = Clock.CheckEvent();
+	eEvent = MyClock.CheckEvent();
 	
-	if (eEvent == CClock::eEventDay)
+	if (eEvent == Clock::eEventDay)
 	{
 		Serial.println("New day starts");
 	}
 	else
-	if (eEvent == CClock::eEventHour)
+	if (eEvent == Clock::eEventHour)
 	{
 		Serial.println("New hour start");
+		MyClock.SaveClock();
 	}
 	else
-	if (eEvent == CClock::eEventMinute)
+	if (eEvent == Clock::eEventMinute)
 	{
-		Serial.printf("[%2u:%02u] (is %s)\n",
-		              Clock.dtNow.Hour(),
-			      Clock.dtNow.Minute(),
-			      Clock.IsDay() ? "day" : "night");
+		Serial.printf("%s [%2u:%02u] (is %s)\n",
+		              MyClock.GetDateStr(),
+			      MyClock.Hour(),
+			      MyClock.Minute(),
+			      MyClock.IsDay() ? "day" : "night");
 	}
 
 	// wait

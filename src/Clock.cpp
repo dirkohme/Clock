@@ -1,7 +1,7 @@
 /*
  The MIT License (MIT)
 
- Copyright (c) 2019-2020 Dirk Ohme
+ Copyright (c) 2019-2022 Dirk Ohme
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -23,20 +23,30 @@
 */
 
 //---| definitions |----------------------------------------------------------
-#undef TEST
-//#define TEST
+#define USE_EEPROM		1
+#undef  TEST
+#define TEST
 
 //---|debugging |---------------------------------------------------------------
 #if defined(TEST)
-#  define DebugOut(s)         Serial.println(s)
+#  define DebugOut(s)		Serial.println(s)
+#  define DebugVal(s,x)		Serial.printf(s,x)
 #else
 #  define DebugOut(s)
+#  define DebugVal(s,x)
 #endif
 
 //---| definitions |------------------------------------------------------------
-#define       ADDR_ALARM_MSB    0x00
-#define       ADDR_ALARM_LSB    0x01
-#define       ADDR_ALARM_ENABLE 0x02
+#define       ADDR_ALARM_ENABLE	0x00
+#define       ADDR_ALARM_HOUR	0x01
+#define       ADDR_ALARM_MINUTE	0x02
+#define       ADDR_CLOCK_HOUR   0x03
+#define       ADDR_CLOCK_MINUTE 0x04
+#define       ADDR_CLOCK_DAY	0x05
+#define       ADDR_CLOCK_MONTH	0x06
+#define       ADDR_CLOCK_YEAR	0x07
+#define       VALUE_ALARM_OFF	0x00
+#define       VALUE_ALARM_ON	0xEA
 
 //---| includes |---------------------------------------------------------------
 #if defined(ESP8266)
@@ -45,108 +55,90 @@
 #  include <avr/pgmspace.h>
 #endif
 #include <Arduino.h>
-#include <EEPROM.h>
-#include <Wire.h>
-#include <RtcDateTime.h>
-#include <RtcDS1307.h>
+#if defined(USE_EEPROM) && (USE_EEPROM > 0)
+#  include <EEPROM.h>
+#endif
 #include "Clock.h"
 
 //---| globals |----------------------------------------------------------------
-static RtcDS1307<TwoWire> s_clsHWClock(Wire);
-static const RtcDateTime  sc_dtCompiled = RtcDateTime(__DATE__, __TIME__);
+/*static*/ const char* Clock::Months[] = {
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+};
 
 //----------------------------------------------------------------------------
 // constructor
 //----------------------------------------------------------------------------
-CClock::CClock()
+Clock::Clock()
 {
-	au8Alarm[0]     = au8Alarm[1]     = 0xFFu;
-	au8AlarmNext[0] = au8AlarmNext[1] = 0xFFu;
-	boAlarm         =
-	boAlarmEnable   = false;
-	boHWClock       = false;
-	szAlarmTime[0]  = '\0';
-	u32Next         = u32Start        = 0ul;
+	au8Alarm_m[0]     = au8Alarm_m[1]     = 0xFFu;
+	au8AlarmNext_m[0] = au8AlarmNext_m[1] = 0xFFu;
+	boAlarm_m         =
+	boAlarmEnable_m   = false;
+	szAlarmTime_m[0]  = '\0';
+	szDateStr_m[0]    = '\0';
+	u32Next_m         = u32Start_m        = 0ul;
+	SetClockDefaults();
 }
 
 //----------------------------------------------------------------------------
 // check for next event
 //----------------------------------------------------------------------------
-CClock::EEvent CClock::CheckEvent()
+Clock::EEvent Clock::CheckEvent()
 {
-	CClock::EEvent eEvent  =  CClock::eEventNone;
+	Clock::EEvent eEvent  =  Clock::eEventNone;
 	uint32_t       u32Diff;
 	uint8_t        u8Day, u8Hour;
 
 	// check for next minute
-	if (millis() > u32Next)
+	if (millis() > u32Next_m)
 	{
 		// next minute
-		u8Day   = dtNow.Day();
-		u8Hour  = dtNow.Hour();
-
-		if (boHWClock)
-		{
-			dtNow = s_clsHWClock.GetDateTime();
+		u8Day      = suClock_m.tm_mday;
+		u8Hour     = suClock_m.tm_hour;
+		u32Diff    = ((u32Next_m - u32Start_m) / 1000);
+		tsClock_m += u32Diff;
+		localtime_r(&tsClock_m, &suClock_m);
 #if defined(TEST)
-			Serial.printf("[clock] clock %02u:%02u:%02u (RTC)\n",
-			              dtNow.Hour(), dtNow.Minute(), dtNow.Second());
+		Serial.printf("[clock] clock %2u:%02u:%02u\n",
+		              suClock_m.tm_hour, suClock_m.tm_min, suClock_m.tm_sec);
 #endif
-		}
-		else
-		{
-			u32Diff = ((u32Next - u32Start) / 1000);
-			dtNow  += u32Diff;
-#if defined(TEST)
-			Serial.printf("[clock] clock %02u:%02u:%02u (%lu sec)\n",
-			              dtNow.Hour(), dtNow.Minute(), dtNow.Second(), u32Diff);
-#endif
-		}
 
 		// check for overrun
-		if (u8Day != dtNow.Day())
+		if (u8Day != suClock_m.tm_mday)
 		{
-			eEvent = CClock::eEventDay;
+			eEvent = Clock::eEventDay;
 			DebugOut("[clock] new day starts");
+			SaveClock();
 		}
 		else
-		if (u8Hour != dtNow.Hour())
+		if (u8Hour != suClock_m.tm_hour)
 		{
-			eEvent = CClock::eEventHour;
+			eEvent = Clock::eEventHour;
 			DebugOut("[clock] new hour starts");
 		}
 		else
 		{
-			eEvent = CClock::eEventMinute;
+			eEvent = Clock::eEventMinute;
 			DebugOut("[clock] new minute starts");
 		}
 
 		// check for alarm
-		if (boAlarmEnable)
+		if (boAlarmEnable_m)
 		{
 			// check alarm
-			boAlarm = (((au8Alarm[0]     == dtNow.Hour()) && (au8Alarm[1]     == dtNow.Minute())) ||
-			           ((au8AlarmNext[0] == dtNow.Hour()) && (au8AlarmNext[1] == dtNow.Minute())));
-			if (boAlarm)
+			boAlarm_m = (((au8Alarm_m[0]   == suClock_m.tm_hour) && (au8Alarm_m[1]     == suClock_m.tm_min)) ||
+			           ((au8AlarmNext_m[0] == suClock_m.tm_hour) && (au8AlarmNext_m[1] == suClock_m.tm_min)));
+			if (boAlarm_m)
 			{       
 				DebugOut("[clock] alarm event");
 			}
 		}
 
-		// read hardware clock?
-		if (boHWClock && (eEvent >= CClock::eEventHour))
-		{
-			DebugOut("[clock] read hardware clock");
-			dtNow = s_clsHWClock.GetDateTime();
-		}
-
 		// set new update cycle
-		u32Start = millis();
-		u32Next  = u32Start + ((60 - dtNow.Second()) * 1000);
+		u32Start_m = millis();
+		u32Next_m  = u32Start_m + ((60 - suClock_m.tm_sec) * 1000);
 #if defined(TEST)
-		Serial.printf("[clock] clock %02u:%02u:%02u (%lu -> %lu)\n",
-		              dtNow.Hour(), dtNow.Minute(), dtNow.Second(),
-			      u32Start, u32Next);
+		Serial.printf("[clock] now %lu -> then %lu)\n", u32Start_m, u32Next_m);
 #endif
 	}
 
@@ -157,205 +149,190 @@ CClock::EEvent CClock::CheckEvent()
 //----------------------------------------------------------------------------
 // enable or disable alarm
 //----------------------------------------------------------------------------
-bool CClock::EnableAlarm(const bool boEnable /*= true*/)
+bool Clock::EnableAlarm(const bool boEnable /*= true*/)
 {
-	bool boReturnValue = boAlarmEnable;
+	bool boReturnValue = boAlarmEnable_m;
 
-	boAlarm         = false;
-	boAlarmEnable   = boEnable;
-	au8AlarmNext[0] = 0xFF;
-	au8AlarmNext[1] = 0xFF;
+	boAlarm_m         = false;
+	boAlarmEnable_m   = boEnable;
+	au8AlarmNext_m[0] = 0xFF;
+	au8AlarmNext_m[1] = 0xFF;
 	DebugOut(boEnable ? "[clock] enable alarm" : "[clock] disable alarm");
 	SaveAlarm();
 	return boReturnValue;
 }
 
 //----------------------------------------------------------------------------
+// get date string
+//----------------------------------------------------------------------------
+const char* Clock::GetDateStr()
+{
+	snprintf(szDateStr_m, sizeof(szDateStr_m), "%2u. %s. %04u",
+	         suClock_m.tm_mday, Months[suClock_m.tm_mon],
+		 1900 + suClock_m.tm_year);
+	return szDateStr_m;
+}
+
+//----------------------------------------------------------------------------
 // get alarm time
 //----------------------------------------------------------------------------
-const char* CClock::GetAlarmTime()
+const char* Clock::GetAlarmTime()
 {
-	if (boAlarmEnable)
+	if (boAlarmEnable_m)
 	{
-		if ((au8AlarmNext[0] < 24) && (au8AlarmNext[1] < 60))
+		if ((au8AlarmNext_m[0] < 24) && (au8AlarmNext_m[1] < 60))
 		{
-			snprintf(szAlarmTime, sizeof(szAlarmTime),
-			         "*%2u:%02u", au8AlarmNext[0], au8AlarmNext[1]);
+			snprintf(szAlarmTime_m, sizeof(szAlarmTime_m),
+			         "*%2u:%02u", au8AlarmNext_m[0], au8AlarmNext_m[1]);
 		}
 		else
 		{
-			snprintf(szAlarmTime, sizeof(szAlarmTime),
-			         " %2u:%02u", au8Alarm[0], au8Alarm[1]);
+			snprintf(szAlarmTime_m, sizeof(szAlarmTime_m),
+			         " %2u:%02u", au8Alarm_m[0], au8Alarm_m[1]);
 		}
 	}
 	else
 	{
-		strncpy(szAlarmTime, "      ", sizeof(szAlarmTime));
+		strncpy(szAlarmTime_m, "      ", sizeof(szAlarmTime_m));
 	}
 
-	return (const char*)&szAlarmTime;
+	return (const char*)&szAlarmTime_m;
 }
 
 //----------------------------------------------------------------------------
 // initialize clock
 //----------------------------------------------------------------------------
-bool CClock::Init()
+bool Clock::Init()
 {
-	// initialize clock
-	s_clsHWClock.Begin();
-	delay(100);
-
 	// initialize internal
-	boAlarm         = false;
-	boAlarmEnable   = false;
-	boHWClock       = false;
-	dtNow           = s_clsHWClock.GetDateTime();
-	au8Alarm[0]     = 0;
-	au8Alarm[1]     = 0;
-	au8AlarmNext[0] = 0xFF;
-	au8AlarmNext[1] = 0xFF;
+	boAlarm_m         = false;
+	boAlarmEnable_m   = false;
+	au8Alarm_m[0]     = 0;
+	au8Alarm_m[1]     = 0;
+	au8AlarmNext_m[0] = 0xFF;
+	au8AlarmNext_m[1] = 0xFF;
 
-	if (dtNow < sc_dtCompiled)
+#if defined(USE_EEPROM) && (USE_EEPROM > 0)
+	DebugOut("[clock] initialization with EEPROM");
+	EEPROM.begin(512);
+	
+	// read clock
+	memset(&suClock_m, 0, sizeof(suClock_m));
+	suClock_m.tm_hour = EEPROM.read(ADDR_CLOCK_HOUR);
+	suClock_m.tm_min  = EEPROM.read(ADDR_CLOCK_MINUTE);
+	suClock_m.tm_mday = EEPROM.read(ADDR_CLOCK_DAY);
+	suClock_m.tm_mon  = EEPROM.read(ADDR_CLOCK_MONTH);
+	suClock_m.tm_year = EEPROM.read(ADDR_CLOCK_YEAR);
+	DebugVal("[clock] read hour from EEPROM:   0x%02X\n", suClock_m.tm_hour);
+	DebugVal("[clock] read minute from EEPROM: 0x%02X\n", suClock_m.tm_min);
+	DebugVal("[clock] read day from EEPROM:    0x%02X\n", suClock_m.tm_mday);
+	DebugVal("[clock] read month from EEPROM:  0x%02X\n", suClock_m.tm_mon);
+	DebugVal("[clock] read year from EEPROM:   0x%02X\n", suClock_m.tm_year);
+	
+	if ((suClock_m.tm_hour >= 0) && (suClock_m.tm_hour <  24) &&
+	    (suClock_m.tm_min  >= 0) && (suClock_m.tm_min  <  60) &&
+	    (suClock_m.tm_mday >  0) && (suClock_m.tm_mday <= 31) &&
+	    (suClock_m.tm_mon  >= 0) && (suClock_m.tm_mon  <  12) &&
+	    (suClock_m.tm_year >= 0) && (suClock_m.tm_year < 100))
 	{
-		s_clsHWClock.SetDateTime(sc_dtCompiled);
-		DebugOut("[clock] RTC with invalid date/time");
+		DebugOut("[clock] clock info successfully read from EEPROM");
+		tsClock_m = mktime(&suClock_m);
+	}
+	else
+	{
+		DebugOut("[clock] can't reads clock info from EEPROM!");
+		SetClockDefaults();
+	}
+	
+	// read alarm clock
+	boAlarmEnable_m  = false;
+	boAlarmValid_m   = false;
+	au8Alarm_m[0]    = EEPROM.read(ADDR_ALARM_HOUR);
+	au8Alarm_m[1]    = EEPROM.read(ADDR_ALARM_MINUTE);
+	uint8_t u8Enable = EEPROM.read(ADDR_ALARM_ENABLE);
+	DebugVal("[clock] read alarm hour from EEPROM:   0x%02X\n", au8Alarm_m[0]);
+	DebugVal("[clock] read alarm minute from EEPROM: 0x%02X\n", au8Alarm_m[1]);
+	DebugVal("[clock] read alarm marker from EEPROM: 0x%02X\n", u8Enable);
+
+	if ((au8Alarm_m[0] < 24) && (au8Alarm_m[1] < 60))
+	{
+		DebugOut("[clock] alarm time successfully read from EEPROM");
+		boAlarmEnable_m = (u8Enable == VALUE_ALARM_ON);
+		boAlarmValid_m  = true;
+	}
+	else
+	{
+		DebugOut("[clock] invalid alarm time read from EEPROM!");
 	}
 
-	if (!s_clsHWClock.GetIsRunning())
-	{
-		s_clsHWClock.SetIsRunning(true);
-		DebugOut("[clock] RTC stopped - starting");
-		delay(500);
-	}
+	EEPROM.end();				
 
-	if (s_clsHWClock.GetIsRunning())
-	{
-		if ((s_clsHWClock.GetDateTime() > sc_dtCompiled) &&
-		    (dtNow.Hour() < 24) && (dtNow.Minute() < 60))
-		{
-			DebugOut("[clock] RTC up and running");
-			boAlarmEnable   = false;
-			boAlarmValid    = true;
-			au8Alarm[0]     = s_clsHWClock.GetMemory(ADDR_ALARM_MSB);
-			au8Alarm[1]     = s_clsHWClock.GetMemory(ADDR_ALARM_LSB);
-
-			if ((au8Alarm[0] < 24) && (au8Alarm[1] < 60))
-			{
-				boAlarmEnable = (s_clsHWClock.GetMemory(ADDR_ALARM_ENABLE) == 0xEA);
-				boAlarmValid  = true;
-#if defined(TEST)
-				Serial.printf("[clock] alarm %s (%2u:%02u)\n",
-					      (boAlarmEnable ? "on" : "off"),
-					      au8Alarm[0], au8Alarm[1]);
-			}
-			else
-			{
-				DebugOut("[clock] alarm invalid");
+#else
+	DebugOut("[clock] initialization w/o EEPROM");
 #endif
-			}
-
-
-			if ((s_clsHWClock.GetMemory(ADDR_ALARM_ENABLE) != 0) &&
-			    (au8Alarm[0] < 24) && (au8Alarm[1] < 60))
-			{
-				boAlarmEnable = true;
-			}
-			else
-			{
-				au8Alarm[0]   = 0;
-				au8Alarm[1]   = 0;
-			}
-
-			au8AlarmNext[0] = 0xFF;
-			au8AlarmNext[1] = 0xFF;
-			boHWClock       = true;
-		}
-	}
-
-	if (!boHWClock)
-	{
-		dtNow = sc_dtCompiled;
-		DebugOut("[clock] no RTC available - emulation");
-		EEPROM.begin(512);
-		boAlarmEnable = false;
-		boAlarmValid  = false;
-		au8Alarm[0]   =  EEPROM.read(1);
-		au8Alarm[1]   =  EEPROM.read(2);
-
-		if ((au8Alarm[0] < 24) && (au8Alarm[1] < 60))
-		{
-			boAlarmEnable = (EEPROM.read(0) == 0xEA);
-			boAlarmValid  = true;
-#if defined(TEST)
-			Serial.printf("[clock] alarm %s (%2u:%02u)\n",
-			              (boAlarmEnable ? "on" : "off"),
-				      au8Alarm[0], au8Alarm[1]);
-		}
-		else
-		{
-			DebugOut("[clock] alarm invalid");
-#endif
-		}
-
-		EEPROM.end();				
-	}
 
 	// set new update cycle
-	u32Start = millis();
-	u32Next  = u32Start + ((60 - dtNow.Second()) * 1000);
-#if defined(TEST)
-	Serial.printf("[clock] init clock %02u:%02u:%02u (%lu -> %lu)\n",
-	              dtNow.Hour(), dtNow.Minute(), dtNow.Second(),
-		      u32Start, u32Next);
-#endif
+	u32Start_m = 0;
+	u32Next_m  = millis();
+
 	// return success
 	return true;
 }
 
 //----------------------------------------------------------------------------
-// save alarm time
+// save alarm time to EEPROM
 //----------------------------------------------------------------------------
-bool CClock::SaveAlarm()
+bool Clock::SaveAlarm()
 {
+#if defined(USE_EEPROM) && (USE_EEPROM > 0)
+	DebugOut("[clock] store alarm settings (EEPROM)");
+	EEPROM.begin(512);
+	EEPROM.write(ADDR_ALARM_ENABLE, boAlarmEnable_m ? VALUE_ALARM_ON
+	                                                : VALUE_ALARM_OFF);
+	EEPROM.write(ADDR_ALARM_HOUR,   au8Alarm_m[0]);
+	EEPROM.write(ADDR_ALARM_MINUTE, au8Alarm_m[1]);
+	delay(200);
+	EEPROM.commit();
+	EEPROM.end();
+	boAlarmValid_m = true;
+#endif
+}
 
-	if (boHWClock)
-	{
-		DebugOut("[clock] store alarm settings (RTC)");
-		s_clsHWClock.SetMemory(ADDR_ALARM_MSB, au8Alarm[0]);
-		s_clsHWClock.SetMemory(ADDR_ALARM_LSB, au8Alarm[1]);
-		s_clsHWClock.SetMemory(ADDR_ALARM_ENABLE, boAlarmEnable ? 0xEA : 0x00);
-		boAlarmValid = true;
-	}
-	else
-	{
-		DebugOut("[clock] store alarm settings (EEPROM)");
-		EEPROM.begin(512);
-		EEPROM.write(0, boAlarmEnable ? 0xEA : 0x00);
-		EEPROM.write(1, au8Alarm[0]);
-		EEPROM.write(2, au8Alarm[1]);
-		delay(200);
-		EEPROM.commit();
-		EEPROM.end();
-		boAlarmValid = true;
-	}
+//----------------------------------------------------------------------------
+// save clock date and time to EEPROM
+//----------------------------------------------------------------------------
+bool Clock::SaveClock()
+{
+#if defined(USE_EEPROM) && (USE_EEPROM > 0)
+	DebugOut("[clock] store current clock (EEPROM)");
+	EEPROM.begin(512);
+	EEPROM.write(ADDR_CLOCK_HOUR,   suClock_m.tm_hour);
+	EEPROM.write(ADDR_CLOCK_MINUTE, suClock_m.tm_min);
+	EEPROM.write(ADDR_CLOCK_DAY,    suClock_m.tm_mday);
+	EEPROM.write(ADDR_CLOCK_MONTH,  suClock_m.tm_mon);
+	EEPROM.write(ADDR_CLOCK_YEAR,   suClock_m.tm_year);
+	delay(200);
+	EEPROM.commit();
+	EEPROM.end();
+#endif
 }
 
 //----------------------------------------------------------------------------
 // set alarm
 //----------------------------------------------------------------------------
-bool CClock::SetAlarm(const int iHour, const int iMin)
+bool Clock::SetAlarm(const int iHour, const int iMin)
 {
 	// disable alarm next
-	au8AlarmNext[0] = 0xFF;
-	au8AlarmNext[1] = 0xFF;
+	au8AlarmNext_m[0] = 0xFF;
+	au8AlarmNext_m[1] = 0xFF;
 
 	// set alarm
 	if ((iHour >= 0) && (iHour < 24) && (iMin >= 0) && (iMin < 60))
 	{
-		au8Alarm[0] = iHour;
-		au8Alarm[1] = iMin;
+		au8Alarm_m[0] = iHour;
+		au8Alarm_m[1] = iMin;
 
-		if (!boAlarmEnable)
+		if (!boAlarmEnable_m)
 		{
 			EnableAlarm(true);
 		}
@@ -370,52 +347,76 @@ bool CClock::SetAlarm(const int iHour, const int iMin)
 }
 
 //----------------------------------------------------------------------------
+// set alarm
+//----------------------------------------------------------------------------
+bool Clock::SetAlarm(const char* pszAlarm)
+{
+	bool boResult = false;
+	int  iHour    = 0;
+	int  iMinute  = 0;
+	
+	if ((pszAlarm) && (*pszAlarm))
+	{
+		iHour = atoi(pszAlarm);
+
+		if ((pszAlarm = strchr(pszAlarm, ':')) != NULL)
+		{
+			iMinute = atoi(++pszAlarm);
+		}
+
+		boResult = SetAlarm(iHour, iMinute);
+	}
+	
+	return boResult;
+}
+
+//----------------------------------------------------------------------------
 // set alarm relative
 //----------------------------------------------------------------------------
-bool CClock::SetAlarmRelative(const int iHourRel /*= 0*/, const int iMinRel /*= 1*/)
+bool Clock::SetAlarmRelative(const int iHourRel /*= 0*/, const int iMinRel /*= 1*/)
 {
 	// enable alarm?
-	if (!boAlarmEnable)
+	if (!boAlarmEnable_m)
 	{
 		EnableAlarm(true);
 	}
 
 	// disable alarm next
-	au8AlarmNext[0] = 0xFF;
-	au8AlarmNext[1] = 0xFF;
+	au8AlarmNext_m[0] = 0xFF;
+	au8AlarmNext_m[1] = 0xFF;
 
 	// set alarm relative (minutes)
 	if (iMinRel > 0)
 	{
-		au8Alarm[1]++;
+		au8Alarm_m[1]++;
 
-		if (au8Alarm[1] >= 60)
+		if (au8Alarm_m[1] >= 60)
 		{
-			au8Alarm[1] = 0;
-			au8Alarm[0] = (au8Alarm[0] < 23) ? (au8Alarm[0] + 1) : 0;
+			au8Alarm_m[1] = 0;
+			au8Alarm_m[0] = (au8Alarm_m[0] < 23) ? (au8Alarm_m[0] + 1) : 0;
 		}
 	}
 	else
 	if (iMinRel < 0)
 	{
-		au8Alarm[1]--;
+		au8Alarm_m[1]--;
 
-		if (au8Alarm[1] >= 60)
+		if (au8Alarm_m[1] >= 60)
 		{
-			au8Alarm[1] = 59;
-			au8Alarm[0] = (au8Alarm[0] > 0) ? (au8Alarm[0] - 1) : 23;
+			au8Alarm_m[1] = 59;
+			au8Alarm_m[0] = (au8Alarm_m[0] > 0) ? (au8Alarm_m[0] - 1) : 23;
 		}
 	}
 
 	// set alarm relative (hours)
 	if (iHourRel > 0)
 	{
-		au8Alarm[0] = (au8Alarm[0] < 23) ? (au8Alarm[0] + 1) : 0;
+		au8Alarm_m[0] = (au8Alarm_m[0] < 23) ? (au8Alarm_m[0] + 1) : 0;
 	}
 	else
 	if (iHourRel < 0)
 	{
-		au8Alarm[0] = (au8Alarm[0] > 0) ? (au8Alarm[0] - 1) : 23;
+		au8Alarm_m[0] = (au8Alarm_m[0] > 0) ? (au8Alarm_m[0] - 1) : 23;
 	}
 
 	// return success
@@ -426,22 +427,47 @@ bool CClock::SetAlarmRelative(const int iHourRel /*= 0*/, const int iMinRel /*= 
 //----------------------------------------------------------------------------
 // set (hardware) clock
 //----------------------------------------------------------------------------
-bool CClock::SetClock()
+bool Clock::SetClock(const struct tm suNow)
 {
-	// set hardware clock
-	if (boHWClock)
-	{
-		DebugOut("[clock] set hardware clock");
-		s_clsHWClock.SetDateTime(dtNow);
-	}
+#if defined(TEST)
+	Serial.printf("[clock] new date/time: %04u/%02u/%02u %2u:%02u:%02u\r\n",
+                      1900 + suNow.tm_year, 1 + suNow.tm_mon, suNow.tm_mday,
+		      suNow.tm_hour, suNow.tm_min, suNow.tm_sec);
+#endif
+	suClock_m = suNow;
+	tsClock_m = mktime(&suClock_m);
+	return SetClock();
+}
 
+//----------------------------------------------------------------------------
+// set (hardware) clock
+//----------------------------------------------------------------------------
+bool Clock::SetClock(const time_t tsNow, const bool boUseUTC /*= true*/)
+{
+	tsClock_m = tsNow;
+	(boUseUTC) ? gmtime_r(&tsClock_m, &suClock_m)
+	           : localtime_r(&tsClock_m, &suClock_m);
+#if defined(TEST)
+	Serial.printf("[clock] new date/time: %04u/%02u/%02u %2u:%02u:%02u\r\n",
+                      1900 + suClock_m.tm_year, 1 + suClock_m.tm_mon,
+		      suClock_m.tm_mday, suClock_m.tm_hour,
+		      suClock_m.tm_min,  suClock_m.tm_sec);
+#endif
+	return SetClock();
+}
+
+//----------------------------------------------------------------------------
+// set (hardware) clock
+//----------------------------------------------------------------------------
+bool Clock::SetClock()
+{
 	// set new update cycle
-	u32Start = millis();
-	u32Next  = u32Start + ((60 - dtNow.Second()) * 1000);
+	u32Start_m = millis();
+	u32Next_m  = u32Start_m + ((60 - suClock_m.tm_sec) * 1000);
 #if defined(TEST)
 	Serial.printf("[clock] set clock %02u:%02u:%02u (%lu -> %lu)\n",
-	              dtNow.Hour(), dtNow.Minute(), dtNow.Second(),
-		      u32Start, u32Next);
+	              suClock_m.tm_hour, suClock_m.tm_min, suClock_m.tm_sec,
+		      u32Start_m, u32Next_m);
 #endif
 
 	// return success
@@ -449,51 +475,63 @@ bool CClock::SetClock()
 }
 
 //----------------------------------------------------------------------------
+// set clock defaults
+//----------------------------------------------------------------------------
+void Clock::SetClockDefaults()
+{
+	memset(&suClock_m, 0, sizeof(suClock_m));
+	suClock_m.tm_year = 2022 - 1900;
+	suClock_m.tm_mon  = 0;
+	suClock_m.tm_mday = 1;
+	tsClock_m         = mktime(&suClock_m);
+}
+
+//----------------------------------------------------------------------------
 // snooze alarm
 //----------------------------------------------------------------------------
-void CClock::Snooze(bool bo24Hours /*= false*/)
+void Clock::Snooze(bool bo24Hours /*= false*/)
 {
-	boAlarm = false;
+	boAlarm_m = false;
 
-	if (boAlarmEnable)
+	if (boAlarmEnable_m)
 	{
 		if (bo24Hours)
 		{
 			DebugOut("[clock] snooze for 24h");
-			au8AlarmNext[0] = 0xFF;
-			au8AlarmNext[1] = 0xFF;
+			au8AlarmNext_m[0] = 0xFF;
+			au8AlarmNext_m[1] = 0xFF;
 		}
 		else
-		if ((au8AlarmNext[0] < 24) && (au8AlarmNext[1] < 60))
+		if ((au8AlarmNext_m[0] < 24) && (au8AlarmNext_m[1] < 60))
 		{
 			DebugOut("[clock] snooze (next)");
-			au8AlarmNext[1] += SnoozeMinutes;
+			au8AlarmNext_m[1] += SnoozeMinutes;
 			
-			if (au8AlarmNext[1] >= 60)
+			if (au8AlarmNext_m[1] >= 60)
 			{
-				au8AlarmNext[1] -= 60;
-				au8AlarmNext[0]++;
+				au8AlarmNext_m[1] -= 60;
+				au8AlarmNext_m[0]++;
 				
-				if (au8AlarmNext[0] >= 24)
+				if (au8AlarmNext_m[0] >= 24)
 				{
-					au8AlarmNext[0] -= 24;
+					au8AlarmNext_m[0] -= 24;
 				}
 			}
 		}
 		else
 		{
 			DebugOut("[clock] snooze (first)");
-			au8AlarmNext[0] = au8Alarm[0];
-			au8AlarmNext[1] = au8Alarm[1] + SnoozeMinutes;
+			au8AlarmNext_m[0] = au8Alarm_m[0];
+			au8AlarmNext_m[1] = au8Alarm_m[1] + SnoozeMinutes;
 			
-			if (au8AlarmNext[1] >= 60)
+			if (au8AlarmNext_m[1] >= 60)
 			{
-				au8AlarmNext[1] -= 60;
-				au8AlarmNext[0]++;
+				au8AlarmNext_m[1] -= 60;
+				au8AlarmNext_m[0]++;
 				
-				if (au8AlarmNext[0] >= 24)
+				if (au8AlarmNext_m[0] >= 24)
 				{
-					au8AlarmNext[0] -= 24;
+					au8AlarmNext_m[0] -= 24;
 				}
 			}
 		}
@@ -503,6 +541,6 @@ void CClock::Snooze(bool bo24Hours /*= false*/)
 //----------------------------------------------------------------------------
 // global variable for access
 //----------------------------------------------------------------------------
-CClock Clock;
+Clock MyClock;
 
 //===| eof - end of file |====================================================
