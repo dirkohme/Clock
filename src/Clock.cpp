@@ -108,6 +108,7 @@ Clock::EEvent Clock::CheckEvent()
 		{
 			eEvent = Clock::eEventDay;
 			DebugOut("[clock] new day starts");
+			SaveAlarm();
 			SaveClock();
 		}
 		else
@@ -338,7 +339,6 @@ bool Clock::SetAlarm(const int iHour, const int iMin)
 		}
 
 		// return success
-		SaveAlarm();
 		return true;
 	}
 
@@ -375,53 +375,46 @@ bool Clock::SetAlarm(const char* pszAlarm)
 //----------------------------------------------------------------------------
 bool Clock::SetAlarmRelative(const int iHourRel /*= 0*/, const int iMinRel /*= 1*/)
 {
-	// enable alarm?
-	if (!boAlarmEnable_m)
-	{
-		EnableAlarm(true);
-	}
-
-	// disable alarm next
-	au8AlarmNext_m[0] = 0xFF;
-	au8AlarmNext_m[1] = 0xFF;
+	// get current settings
+	int iHour   = au8Alarm_m[0];
+	int iMinute = au8Alarm_m[1];
 
 	// set alarm relative (minutes)
 	if (iMinRel > 0)
 	{
-		au8Alarm_m[1]++;
+		iMinute++;
 
-		if (au8Alarm_m[1] >= 60)
+		if (iMinute >= 60)
 		{
-			au8Alarm_m[1] = 0;
-			au8Alarm_m[0] = (au8Alarm_m[0] < 23) ? (au8Alarm_m[0] + 1) : 0;
+			iMinute = 0;
+			iHour = (iHour < 23) ? (iHour + 1) : 0;
 		}
 	}
 	else
 	if (iMinRel < 0)
 	{
-		au8Alarm_m[1]--;
+		iMinute--;
 
-		if (au8Alarm_m[1] >= 60)
+		if (iMinute >= 60)
 		{
-			au8Alarm_m[1] = 59;
-			au8Alarm_m[0] = (au8Alarm_m[0] > 0) ? (au8Alarm_m[0] - 1) : 23;
+			iMinute = 59;
+			iHour = (iHour > 0) ? (iHour - 1) : 23;
 		}
 	}
 
 	// set alarm relative (hours)
 	if (iHourRel > 0)
 	{
-		au8Alarm_m[0] = (au8Alarm_m[0] < 23) ? (au8Alarm_m[0] + 1) : 0;
+		iHour = (iHour < 23) ? (iHour + 1) : 0;
 	}
 	else
 	if (iHourRel < 0)
 	{
-		au8Alarm_m[0] = (au8Alarm_m[0] > 0) ? (au8Alarm_m[0] - 1) : 23;
+		iHour = (iHour > 0) ? (iHour - 1) : 23;
 	}
 
 	// return success
-	SaveAlarm();
-	return true;
+	return SetAlarm(iHour, iMinute);
 }
 
 //----------------------------------------------------------------------------

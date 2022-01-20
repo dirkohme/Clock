@@ -81,11 +81,11 @@ Software clock. A variable *MyClock* with a default clock object is available.
   - returns *true* on success
   
 - MyClock.SetAlarm(hour, min)
-  - sets a new alarm time, alarm state (enabled/disabled) will not be changed
+  - sets a new alarm time and enable alarm
   - returns *true* on success
   
 - MyClock.SetAlarm(string)
-  - sets a new alarm time given as string 'HH:MM'
+  - sets a new alarm time given as string 'HH:MM' and enable alarm
   - returns *true* on success
 
 - MyClock.SetAlarmRelative(dHour, dMin)
@@ -119,6 +119,7 @@ Software clock. A variable *MyClock* with a default clock object is available.
 ## Releases
 
 - 1.0.0 Initial release.
+- 1.0.1 Minor bug-fixes
 
 ## How to install
 
