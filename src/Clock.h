@@ -58,6 +58,9 @@ protected:
 	// @return true on success, false on error
 	bool SaveAlarm();
 	
+	// set alarm defaults
+	void SetAlarmDefaults();
+
 	// set clock defaults
 	void SetClockDefaults();
 

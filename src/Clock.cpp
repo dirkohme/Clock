@@ -70,13 +70,10 @@
 //----------------------------------------------------------------------------
 Clock::Clock()
 {
-	au8Alarm_m[0]     = au8Alarm_m[1]     = 0xFFu;
-	au8AlarmNext_m[0] = au8AlarmNext_m[1] = 0xFFu;
-	boAlarm_m         =
-	boAlarmEnable_m   = false;
-	szAlarmTime_m[0]  = '\0';
-	szDateStr_m[0]    = '\0';
-	u32Next_m         = u32Start_m        = 0ul;
+	szDateStr_m[0] = '\0';
+	u32Next_m      =
+	u32Start_m     = 0ul;
+	SetAlarmDefaults();
 	SetClockDefaults();
 }
 
@@ -218,6 +215,7 @@ bool Clock::Init()
 	EEPROM.begin(512);
 	
 	// read clock
+	DebugOut("[clock] try to read clock data stored in EEPROM");
 	memset(&suClock_m, 0, sizeof(suClock_m));
 	suClock_m.tm_hour = EEPROM.read(ADDR_CLOCK_HOUR);
 	suClock_m.tm_min  = EEPROM.read(ADDR_CLOCK_MINUTE);
@@ -234,7 +232,7 @@ bool Clock::Init()
 	    (suClock_m.tm_min  >= 0) && (suClock_m.tm_min  <  60) &&
 	    (suClock_m.tm_mday >  0) && (suClock_m.tm_mday <= 31) &&
 	    (suClock_m.tm_mon  >= 0) && (suClock_m.tm_mon  <  12) &&
-	    (suClock_m.tm_year >= 0) && (suClock_m.tm_year < 100))
+	    (suClock_m.tm_year >= 0) && (suClock_m.tm_year < 200))
 	{
 		DebugOut("[clock] clock info successfully read from EEPROM");
 		tsClock_m = mktime(&suClock_m);
@@ -248,6 +246,7 @@ bool Clock::Init()
 	// read alarm clock
 	boAlarmEnable_m  = false;
 	boAlarmValid_m   = false;
+	DebugOut("[clock] try to read alarm data stored in EEPROM");
 	au8Alarm_m[0]    = EEPROM.read(ADDR_ALARM_HOUR);
 	au8Alarm_m[1]    = EEPROM.read(ADDR_ALARM_MINUTE);
 	uint8_t u8Enable = EEPROM.read(ADDR_ALARM_ENABLE);
@@ -264,6 +263,7 @@ bool Clock::Init()
 	else
 	{
 		DebugOut("[clock] invalid alarm time read from EEPROM!");
+		SetAlarmDefaults();
 	}
 
 	EEPROM.end();				
@@ -465,6 +465,20 @@ bool Clock::SetClock()
 
 	// return success
 	return true;
+}
+
+//----------------------------------------------------------------------------
+// set alarm defaults
+//----------------------------------------------------------------------------
+void Clock::SetAlarmDefaults()
+{
+	au8Alarm_m[0]     = 6;
+	au8Alarm_m[1]     = 0;
+	au8AlarmNext_m[0] =
+	au8AlarmNext_m[1] = 0xFFu;
+	boAlarm_m         =
+	boAlarmEnable_m   = false;
+	szAlarmTime_m[0]  = '\0';
 }
 
 //----------------------------------------------------------------------------
