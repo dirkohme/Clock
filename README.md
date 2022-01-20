@@ -121,6 +121,7 @@ Software clock. A variable *MyClock* with a default clock object is available.
 - 1.0.0 Initial release.
 - 1.0.1 Minor bug-fixes
 - 1.0.2 Minor bug-fixes
+- 1.0.3 Minor bug-fixes
 
 ## How to install
 
