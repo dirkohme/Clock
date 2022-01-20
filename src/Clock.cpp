@@ -24,8 +24,8 @@
 
 //---| definitions |----------------------------------------------------------
 #define USE_EEPROM		1
-//#undef  TEST
-#define TEST
+#undef  TEST
+//#define TEST
 
 //---|debugging |---------------------------------------------------------------
 #if defined(TEST)
