@@ -124,8 +124,8 @@ Clock::EEvent Clock::CheckEvent()
 		if (boAlarmEnable_m)
 		{
 			// check alarm
-			boAlarm_m = (((au8Alarm_m[0]   == suClock_m.tm_hour) && (au8Alarm_m[1]     == suClock_m.tm_min)) ||
-			           ((au8AlarmNext_m[0] == suClock_m.tm_hour) && (au8AlarmNext_m[1] == suClock_m.tm_min)));
+			boAlarm_m |= (((au8Alarm_m[0]     == suClock_m.tm_hour) && (au8Alarm_m[1]     == suClock_m.tm_min)) ||
+			              ((au8AlarmNext_m[0] == suClock_m.tm_hour) && (au8AlarmNext_m[1] == suClock_m.tm_min)));
 			if (boAlarm_m)
 			{       
 				DebugOut("[clock] alarm event");
@@ -296,6 +296,9 @@ bool Clock::SaveAlarm()
 	EEPROM.commit();
 	EEPROM.end();
 	boAlarmValid_m = true;
+	return true;
+#else
+	return false;
 #endif
 }
 
@@ -315,6 +318,9 @@ bool Clock::SaveClock()
 	delay(200);
 	EEPROM.commit();
 	EEPROM.end();
+	return true;
+#else
+	return false;
 #endif
 }
 

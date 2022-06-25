@@ -122,6 +122,7 @@ Software clock. A variable *MyClock* with a default clock object is available.
 - 1.0.1 Minor bug-fixes
 - 1.0.2 Minor bug-fixes
 - 1.0.3 Minor bug-fixes
+- 1.0.4 missing return values on SaveAlarm() and SaveClock, changed behaviour on boAlarm_m (line 127)
 
 ## How to install
 
