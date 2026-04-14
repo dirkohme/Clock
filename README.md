@@ -67,6 +67,9 @@ Software clock. A variable *MyClock* with a default clock object is available.
 - MyClock.IsDay()
   - returns *true* on day, *false* on night
   
+- MyClock.IsValid()
+  - returns *true* if valid date and time information is stored
+
 - MyClock.Loop()
   - may be called instead of CheckEvent() in order to keep the clock running
   
@@ -123,6 +126,7 @@ Software clock. A variable *MyClock* with a default clock object is available.
 - 1.0.2 Minor bug-fixes
 - 1.0.3 Minor bug-fixes
 - 1.0.4 missing return values on SaveAlarm() and SaveClock, changed behaviour on boAlarm_m (line 127)
+- 1.0.5 added: IsValid()
 
 ## How to install
 

@@ -1,7 +1,7 @@
 /*
  The MIT License (MIT)
 
- Copyright (c) 2019-2024 Dirk Ohme
+ Copyright (c) 2019-2026 Dirk Ohme
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -47,6 +47,7 @@ protected:
 	bool		boAlarm_m;
 	bool		boAlarmEnable_m;
 	bool		boAlarmValid_m;
+	bool		boDateTimeValid_m;
 	struct tm	suClock_m;
 	char		szAlarmTime_m[16];
 	char		szDateStr_m[16];
@@ -114,6 +115,10 @@ public:
 	// check if day or night mode
 	// @return true on day, false on night
 	inline bool IsDay() { return ((suClock_m.tm_hour >= 6) && (suClock_m.tm_hour <= 18)); }
+	
+	// check if time is valid
+	// @return true if valid, false if invalid
+	inline bool IsValid() { return boDateTimeValid_m; }
 	
 	// loop operation - either call Loop() or CheckEvent() in order to keep the clock synchronized
 	inline void Loop() { CheckEvent(); }

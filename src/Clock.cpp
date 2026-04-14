@@ -1,7 +1,7 @@
 /*
  The MIT License (MIT)
 
- Copyright (c) 2019-2024 Dirk Ohme
+ Copyright (c) 2019-2026 Dirk Ohme
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -165,9 +165,15 @@ bool Clock::EnableAlarm(const bool boEnable /*= true*/)
 //----------------------------------------------------------------------------
 const char* Clock::GetDateStr()
 {
-	snprintf(szDateStr_m, sizeof(szDateStr_m), "%2u. %s. %04u",
-	         suClock_m.tm_mday, Months[suClock_m.tm_mon],
-		 1900 + suClock_m.tm_year);
+	szDateStr_m[0] = '\0';
+	
+	if (IsValid())
+	{
+		snprintf(szDateStr_m, sizeof(szDateStr_m), "%2u. %s. %04u",
+			 suClock_m.tm_mday, Months[suClock_m.tm_mon],
+			 1900 + suClock_m.tm_year);
+	}
+	
 	return szDateStr_m;
 }
 
@@ -236,6 +242,7 @@ bool Clock::Init()
 	{
 		DebugOut("[clock] clock info successfully read from EEPROM");
 		tsClock_m = mktime(&suClock_m);
+		boDateTimeValid_m = true;
 	}
 	else
 	{
@@ -244,8 +251,9 @@ bool Clock::Init()
 	}
 	
 	// read alarm clock
-	boAlarmEnable_m  = false;
-	boAlarmValid_m   = false;
+	boAlarmEnable_m   = false;
+	boAlarmValid_m    = false;
+	boDateTimeValid_m = false;
 	DebugOut("[clock] try to read alarm data stored in EEPROM");
 	au8Alarm_m[0]    = EEPROM.read(ADDR_ALARM_HOUR);
 	au8Alarm_m[1]    = EEPROM.read(ADDR_ALARM_MINUTE);
@@ -470,7 +478,18 @@ bool Clock::SetClock()
 #endif
 
 	// return success
-	return true;
+	boDateTimeValid_m = (suClock_m.tm_hour >= 0) && (suClock_m.tm_hour < 24) &&
+	                    (suClock_m.tm_min  >= 0) && (suClock_m.tm_min  < 60) &&
+	                    (suClock_m.tm_sec  >= 0) && (suClock_m.tm_sec  < 62);
+	                    
+	if (boDateTimeValid_m && (suClock_m.tm_year > 30))
+	{
+		boDateTimeValid_m = (suClock_m.tm_year > 30) && (suClock_m.tm_year < 130) &&
+				    (suClock_m.tm_mon  >= 0) && (suClock_m.tm_mon  < 12) &&
+				    (suClock_m.tm_mday >= 1) && (suClock_m.tm_mday < 32);
+	}
+
+	return boDateTimeValid_m;
 }
 
 //----------------------------------------------------------------------------

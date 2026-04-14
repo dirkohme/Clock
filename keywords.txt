@@ -23,6 +23,7 @@ IsAlarm			KEYWORD2
 IsAlarmEnabled		KEYWORD2
 IsAlarmValid		KEYWORD2
 IsDay			KEYWORD2
+IsValid			KEYWORD2
 Loop			KEYWORD2
 Minute			KEYWORD2
 Month			KEYWORD2
