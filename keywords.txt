@@ -17,6 +17,7 @@ Day			KEYWORD2
 EnableAlarm		KEYWORD2
 GetAlarmTime		KEYWORD2
 GetDateStr		KEYWORD2
+GetTimeStamp		KEYWORD2
 Hour			KEYWORD2
 Init			KEYWORD2
 IsAlarm			KEYWORD2

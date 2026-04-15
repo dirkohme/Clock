@@ -47,6 +47,9 @@ Software clock. A variable *MyClock* with a default clock object is available.
 - MyClock.GetDateStr()
   - returns current date as 'dd. mon yyyy'
   
+- MyClock.GetTimeStamp()
+  - returns internal timestamp
+  
 - MyClock.Hour()
   - returns current hour (0..23)
   

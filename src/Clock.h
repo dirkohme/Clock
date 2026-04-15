@@ -92,6 +92,10 @@ public:
 	// @return string
 	const char* GetDateStr();
 	
+	// get internal timestamp
+	// @return time_t value
+	inline const time_t GetTimeStamp() { return tsClock_m; }
+	
 	// return current hour
 	// @return hour (0..23)
 	const int Hour() { return suClock_m.tm_hour; }
